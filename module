@@ -1,0 +1,102 @@
+
+// 8x8 Multiplier (Behavioral)
+module multiplier_8x8 (input [7:0] a,input [7:0] b,output [15:0] product);
+    assign product = a * b;
+endmodule
+
+// Priority Encoder (Gate Level)
+module priority_encoder_16bit (input [15:0] in,output reg [3:0] pos);
+    always @(*) begin
+        case (in)
+            16'b1xxxxxxxxxxxxxxx: pos = 4'd15;
+            16'b01xxxxxxxxxxxxxx: pos = 4'd14;
+            16'b001xxxxxxxxxxxxx: pos = 4'd13;
+            16'b0001xxxxxxxxxxxx: pos = 4'd12;
+            16'b00001xxxxxxxxxxx: pos = 4'd11;
+            16'b000001xxxxxxxxxx: pos = 4'd10;
+            16'b0000001xxxxxxxxx: pos = 4'd9;
+            16'b00000001xxxxxxxx: pos = 4'd8;
+            16'b000000001xxxxxxx: pos = 4'd7;
+            16'b0000000001xxxxxx: pos = 4'd6;
+            16'b00000000001xxxxx: pos = 4'd5;
+            16'b000000000001xxxx: pos = 4'd4;
+            16'b0000000000001xxx: pos = 4'd3;
+            16'b00000000000001xx: pos = 4'd2;
+            16'b000000000000001x: pos = 4'd1;
+            16'b0000000000000001: pos = 4'd0;
+            default: pos = 4'b0000;  // If no '1' is found, default to 15
+        endcase
+    end
+endmodule
+
+
+// Comparator (Gate Level)
+module comparator_4bit (input [3:0] a,output gt);
+    assign gt = (a > 4'b1000);
+endmodule
+
+// 2-to-1 MUX (Gate Level)
+module mux_2to1 (input [3:0] in1,input sel,output [3:0] out);
+    assign out = sel ? in1 : 4'b1000;
+endmodule
+
+// Left Shift Register (Gate Level)
+module shift_register (input [15:0] a,input [15:0] b,input [3:0] shift_amount,output [7:0] out_a);
+    wire [15:0] shifted_a;
+    wire [3:0] actual_shift;
+
+    assign actual_shift = 4'b1111 - shift_amount;
+    assign shifted_a = a << actual_shift;
+    assign out_a = shifted_a[15:8];
+endmodule
+
+// Adder for (15 - PE_a) + (15 - PE_b)
+module adder_15_minus_pe (input [3:0] pe_a,input [3:0] pe_b,output [4:0] sum);
+    wire [3:0] diff_a, diff_b;
+
+    assign diff_a = 4'b1111 - pe_a;
+    assign diff_b = 4'b1111 - pe_b;
+    assign sum = diff_a + diff_b;
+endmodule
+
+// 32-bit Right Shift Register
+module shift_register_32bit_right (input [15:0] product,input [4:0] shift_amount,output [31:0] shifted_output);
+    wire [31:0] input_data;
+    assign input_data = {product,16'b0};
+    assign shifted_output = input_data >> shift_amount;
+endmodule
+
+// Top Module for Approximate Multiplier
+module approx_multiplier_top (input [15:0] a,input [15:0] b,output [31:0] result);
+    wire [7:0] shift_left_a, shift_left_b;
+    wire [15:0] mult_product;
+    wire [3:0] pe_a, pe_b;
+    wire [4:0] adder_output;
+    wire [3:0] mux_output_a, mux_output_b;
+    wire gt_a, gt_b;
+    
+    priority_encoder_16bit pe_a_module (.in(a), .pos(pe_a));
+    priority_encoder_16bit pe_b_module (.in(b), .pos(pe_b));
+
+    comparator_4bit comp_a (.a(pe_a), .gt(gt_a));
+    comparator_4bit comp_b (.a(pe_b), .gt(gt_b));
+
+    mux_2to1 mux_a (.in1(pe_a), .sel(gt_a), .out(mux_output_a));
+    mux_2to1 mux_b (.in1(pe_b), .sel(gt_b), .out(mux_output_b));
+
+    shift_register shift_left_a_module (
+        .a(a), .b(a), .shift_amount(mux_output_a), .out_a(shift_left_a)
+    );
+
+    shift_register shift_left_b_module (
+        .a(b), .b(b), .shift_amount(mux_output_b), .out_a(shift_left_b)
+    );
+
+    multiplier_8x8 multiplier (.a(shift_left_a), .b(shift_left_b), .product(mult_product));
+
+    adder_15_minus_pe adder_module (.pe_a(pe_a), .pe_b(pe_b), .sum(adder_output));
+
+    shift_register_32bit_right right_shift_register (
+        .product(mult_product), .shift_amount(adder_output), .shifted_output(result)
+    );
+endmodule
